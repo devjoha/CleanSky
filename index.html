@@ -1,0 +1,409 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CleanSky — Live Air Quality & Forecast</title>
+
+  <!-- Tailwind -->
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js -->
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Leaflet -->
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    html,body,#app { height: 100%; margin:0; }
+    #app { display: grid; grid-template-columns: 400px 1fr; min-height:100vh; }
+    @media(max-width: 900px){ #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+    #map { height: calc(100vh - 40px); border-radius: 16px; overflow:hidden; }
+    .glass {
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(8px);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(2,6,23,0.45);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .stat-num { font-size:1.8rem; font-weight:700; color: #fff; }
+    .fade-in { animation: fadeIn 0.45s ease-in-out; }
+    @keyframes fadeIn { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+    /* Click marker (pulsing) */
+    .click-marker {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+    }
+    .click-marker .dot {
+      width: 12px;
+      height: 12px;
+      background: #38bdf8;
+      border-radius: 50%;
+      box-shadow: 0 0 0 6px rgba(56,189,248,0.18);
+      position: relative;
+      animation: pulse 1.6s infinite;
+      border: 2px solid rgba(255,255,255,0.12);
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      70% { transform: scale(1.9); opacity: 0; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+
+    /* Station markers style (simple colored circle) */
+    .station-marker {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.9);
+      box-shadow: 0 4px 12px rgba(2,6,23,0.4);
+    }
+
+    .small-muted { color: rgba(255,255,255,0.72); font-size: 0.9rem; }
+    .muted { color: rgba(255,255,255,0.6); font-size: 0.85rem; }
+  </style>
+
+</head>
+<body class="bg-gradient-to-tr from-slate-900 via-sky-900 to-indigo-900 text-white">
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="p-5 overflow-y-auto space-y-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold shadow-lg">CS</div>
+        <div>
+          <h1 class="text-xl font-bold">CleanSky</h1>
+          <p class="small-muted">From EarthData to Action — Cleaner, Safer Skies</p>
+        </div>
+      </div>
+
+```
+  <!-- Location -->
+  <div class="glass p-4 fade-in">
+    <div class="flex justify-between items-center">
+      <div>
+        <div class="muted text-xs">Location</div>
+        <div id="locName" class="font-semibold">Tashkent, Uzbekistan</div>
+        <div id="countryBadge" class="muted text-xs mt-1"></div>
+      </div>
+      <div class="flex flex-col items-end gap-2">
+        <button id="useGeo" class="bg-sky-600 hover:bg-sky-500 px-3 py-1 rounded text-sm">📍 Use My Location</button>
+        <button id="resetView" class="bg-white/10 hover:bg-white/20 px-3 py-1 rounded text-sm">Reset</button>
+      </div>
+    </div>
+    <div class="mt-2 text-xs text-slate-300">Click anywhere on the map to set location — the app will detect the country automatically.</div>
+  </div>
+
+  <!-- Air Quality -->
+  <div class="glass p-5 space-y-4 fade-in">
+    <div class="flex items-center justify-between">
+      <h2 class="font-semibold text-lg flex items-center gap-2">🌫️ Air Quality</h2>
+      <div class="muted text-xs">Stations: <span id="stationCount">—</span></div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-3">
+      <div class="p-3 rounded-xl text-center" style="background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));">
+        <div class="muted text-xs">PM2.5</div>
+        <div id="v_pm25" class="stat-num">—</div>
+      </div>
+      <div class="p-3 rounded-xl text-center" style="background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));">
+        <div class="muted text-xs">PM10</div>
+        <div id="v_pm10" class="stat-num">—</div>
+      </div>
+      <div class="p-3 rounded-xl text-center" style="background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));">
+        <div class="muted text-xs">NO₂</div>
+        <div id="v_no2" class="stat-num">—</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="muted text-sm">AQI</div>
+      <div id="aqiValue" class="text-4xl font-extrabold">—</div>
+      <div id="aqiLabel" class="muted">—</div>
+    </div>
+  </div>
+
+  <!-- Weather -->
+  <div class="glass p-5 space-y-4 fade-in">
+    <div class="flex items-center justify-between">
+      <h2 class="font-semibold text-lg">☀️ Weather</h2>
+      <div class="muted text-xs" id="lastUpdated">—</div>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <div id="weatherIcon" class="text-5xl">☀️</div>
+      <div>
+        <div id="temp" class="text-3xl font-bold">—°C</div>
+        <div id="wind" class="muted">—</div>
+      </div>
+    </div>
+
+    <canvas id="weatherForecast" height="120"></canvas>
+  </div>
+
+  <!-- Recommendations -->
+  <div class="glass p-4 fade-in">
+    <h2 class="font-semibold text-lg">💡 Recommendations</h2>
+    <p id="recs" class="muted mt-2">—</p>
+  </div>
+
+  <div class="muted text-xs mt-2">Demo uses OpenAQ (ground stations) + Open-Meteo (weather). Reverse-geocoding is provided via Nominatim (OpenStreetMap).</div>
+</aside>
+
+<!-- Map -->
+<div class="relative p-5">
+  <div id="map" class="shadow-xl glass"></div>
+</div>
+```
+
+  </div>
+
+<script>
+/* ========= CONFIG ========= */
+const API_BASE = "http://127.0.0.1:8000"; // backend base (change if needed)
+const DEFAULT = { lat: 41.3111, lon: 69.2797, label: "Tashkent, Uzbekistan" }; // default when no geolocation allowed
+/* ========================== */
+
+let map, userMarker = null, stationMarkers = [], weatherChart;
+
+/* Initialize Leaflet map */
+function initMap(){
+  map = L.map('map', {preferCanvas:true}).setView([DEFAULT.lat, DEFAULT.lon], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // click to set location
+  map.on('click', e => handleMapClick(e.latlng.lat, e.latlng.lng));
+
+  // add helpful control: locate
+  L.control.locate = function(opts){
+    const ctrl = L.control({position: 'topleft'});
+    ctrl.onAdd = function(){
+      const el = L.DomUtil.create('div','leaflet-bar leaflet-control');
+      el.style.background = 'white';
+      el.style.padding = '4px';
+      el.style.cursor = 'pointer';
+      el.title = 'Click to detect your location';
+      el.innerHTML = '📍';
+      L.DomEvent.on(el,'click', ()=> navigator.geolocation.getCurrentPosition(p=> handleMapClick(p.coords.latitude,p.coords.longitude), err=>alert("Geolocation failed: "+err.message)));
+      return el;
+    };
+    return ctrl;
+  };
+  L.control.locate().addTo(map);
+}
+
+/* Reverse geocode to get country (Nominatim) */
+async function reverseGeocode(lat, lon){
+  try{
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1`;
+    const r = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    if(!r.ok) throw new Error('Reverse geocode failed');
+    const j = await r.json();
+    const addr = j.address || {};
+    return {
+      display_name: j.display_name || '',
+      country: addr.country || null,
+      country_code: (addr.country_code || '').toUpperCase(),
+      city: addr.city || addr.town || addr.village || addr.hamlet || addr.county || null
+    };
+  }catch(e){
+    console.warn("reverseGeocode error", e);
+    return { country: null, country_code: null, city: null, display_name: null };
+  }
+}
+
+/* Convert country code to flag emoji */
+function countryCodeToEmoji(code){
+  if(!code) return '';
+  return code.toUpperCase().replace(/./g, char => String.fromCodePoint(127397 + char.charCodeAt(0)));
+}
+
+/* Place (or move) the user-click marker */
+function placeUserMarker(lat, lon){
+  if(userMarker){
+    userMarker.setLatLng([lat, lon]);
+    return userMarker;
+  }
+  const icon = L.divIcon({
+    className: 'click-marker',
+    html: '<div class="dot" />',
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -18]
+  });
+  userMarker = L.marker([lat, lon], { icon }).addTo(map);
+  userMarker.bindPopup('Selected location').openPopup();
+  return userMarker;
+}
+
+/* Clear station markers */
+function clearStationMarkers(){
+  stationMarkers.forEach(m => map.removeLayer(m));
+  stationMarkers = [];
+}
+
+/* Add station markers from /air-quality locations[] */
+function addStationMarkers(locations){
+  clearStationMarkers();
+  if(!locations || !locations.length) return;
+  locations.forEach(loc => {
+    const coords = loc.coordinates;
+    if(!coords || !coords.latitude || !coords.longitude) return;
+    // color by pm25 value if present
+    let pm25 = null;
+    if(loc.measurements && loc.measurements.length){
+      const mm = loc.measurements.find(x => x.parameter === 'pm25') || loc.measurements[0];
+      pm25 = mm ? mm.value : null;
+    }
+    let color = '#10b981'; // green
+    if(pm25 !== null){
+      if(pm25 > 150) color = '#ef4444';
+      else if(pm25 > 100) color = '#f97316';
+      else if(pm25 > 60) color = '#f59e0b';
+      else if(pm25 > 36) color = '#10b981';
+    } else color = '#60a5fa';
+
+    const el = document.createElement('div');
+    el.className = 'station-marker';
+    el.style.background = color;
+    const marker = L.marker([coords.latitude, coords.longitude], {
+      icon: L.divIcon({ className: '', html: el.outerHTML, iconSize: [22,22], iconAnchor:[11,11] })
+    }).addTo(map);
+
+    const measHtml = (loc.measurements||[]).map(m => `<b>${m.parameter.toUpperCase()}</b>: ${m.value} ${m.unit||''}`).join('<br>');
+    marker.bindPopup(`<b>${loc.location}</b><br>${measHtml}`);
+    stationMarkers.push(marker);
+  });
+  // fit map to markers if any
+  if(stationMarkers.length){
+    const grp = L.featureGroup(stationMarkers);
+    map.fitBounds(grp.getBounds().pad(0.2));
+  }
+}
+
+/* Generic API caller to backend */
+async function callApi(path){
+  try{
+    const r = await fetch(API_BASE + path);
+    if(!r.ok){
+      const t = await r.text();
+      throw new Error(t || r.statusText);
+    }
+    return await r.json();
+  }catch(e){
+    console.error("API error", path, e);
+    return { error: String(e) };
+  }
+}
+
+/* Update AQ widgets */
+function updateAQ(agg, locations, lastUpdated){
+  document.getElementById('v_pm25').textContent = agg && agg.pm25 ? agg.pm25.toFixed(1) : '—';
+  document.getElementById('v_pm10').textContent = agg && agg.pm10 ? agg.pm10.toFixed(1) : '—';
+  document.getElementById('v_no2').textContent  = agg && agg.no2  ? agg.no2.toFixed(1)  : '—';
+  const pm25 = (agg && agg.pm25) ? agg.pm25 : 0;
+  const aqi = Math.round(pm25 * 2);
+  document.getElementById('aqiValue').textContent = aqi;
+  document.getElementById('aqiLabel').textContent = aqi>150?'🔴 Very Unhealthy':aqi>100?'🟠 Unhealthy':aqi>60?'🟡 Moderate':'🟢 Good';
+  document.getElementById('recs').textContent = aqi>150?'Avoid outdoor activity':aqi>100?'Sensitive groups limit time outside':aqi>60?'Limit heavy exertion outdoors':'Air quality is good';
+  document.getElementById('stationCount').textContent = (locations||[]).length;
+  if(lastUpdated) document.getElementById('lastUpdated').textContent = `Updated: ${new Date(lastUpdated).toLocaleString()}`;
+}
+
+/* Initialize Chart(s) */
+function initCharts(){
+  const ctx = document.getElementById('weatherForecast').getContext('2d');
+  weatherChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Max Temp °C', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.15)', fill: true, tension: 0.3 }]},
+    options: { plugins: { legend: { display: false } }, scales:{ y:{ beginAtZero:false } } }
+  });
+}
+
+/* Main function: fetch AQ, weather, forecast and update UI */
+async function fetchAll(lat=DEFAULT.lat, lon=DEFAULT.lon, label=DEFAULT.label){
+  // place marker
+  placeUserMarker(lat, lon);
+
+  // reverse geocode to show country (try to avoid extra call if label provided that looks like "City, Country")
+  let countryInfo = { country: null, country_code: null, city: null, display_name: null };
+  try {
+    countryInfo = await reverseGeocode(lat, lon);
+  } catch(_) { /* ignore */ }
+
+  // update locName + country badge
+  const ccEmoji = countryCodeToEmoji(countryInfo.country_code);
+  const display = (countryInfo.city ? `${countryInfo.city}, ` : '') + (countryInfo.country || label || '');
+  document.getElementById('locName').textContent = display;
+  document.getElementById('countryBadge').textContent = ccEmoji + (countryInfo.country ? ` ${countryInfo.country}` : '');
+
+  // call backend air-quality (by coords)
+  const aq = await callApi(`/air-quality?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
+  if(aq && !aq.error){
+    // backend returns aggregated, locations, last_updated
+    updateAQ(aq.aggregated || aq.aggregated || {}, aq.locations || [], aq.last_updated || aq.lastUpdated || null);
+    addStationMarkers(aq.locations || []);
+  } else {
+    // fallback UI if API failed
+    updateAQ({pm25:0,pm10:0,no2:0}, [], null);
+    clearStationMarkers();
+  }
+
+  // weather
+  const w = await callApi(`/weather?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
+  if(w && w.current_weather){
+    document.getElementById('temp').textContent = `${w.current_weather.temperature}°C`;
+    document.getElementById('wind').textContent = `Wind ${w.current_weather.windspeed} m/s`;
+    document.getElementById('weatherIcon').textContent = w.current_weather.weathercode === 0 ? '☀️' : '☁️';
+  } else {
+    document.getElementById('temp').textContent = '—°C';
+    document.getElementById('wind').textContent = '—';
+  }
+
+  // forecast
+  const fc = await callApi(`/forecast?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&days=14`);
+  if(fc && fc.daily && fc.daily.time){
+    const times = fc.daily.time;
+    const tmax = fc.daily.temperature_2m_max || [];
+    weatherChart.data.labels = times;
+    weatherChart.data.datasets[0].data = tmax.map(v => Math.round(v));
+    weatherChart.update();
+  }
+}
+
+/* Handle user clicking map */
+async function handleMapClick(lat, lon){
+  placeUserMarker(lat, lon);
+  const geo = await reverseGeocode(lat, lon);
+  const label = (geo.city ? `${geo.city}, ` : '') + (geo.country || `${lat.toFixed(3)}, ${lon.toFixed(3)}`);
+  await fetchAll(lat, lon, label);
+  if(userMarker) userMarker.openPopup();
+}
+
+/* Wiring */
+document.addEventListener('DOMContentLoaded', async ()=>{
+  initMap();
+  initCharts();
+
+  // UI buttons
+  document.getElementById('useGeo').addEventListener('click', ()=> {
+    if(!navigator.geolocation) return alert('Geolocation not supported');
+    navigator.geolocation.getCurrentPosition(p=> handleMapClick(p.coords.latitude, p.coords.longitude), err=> alert('Geolocation failed: '+err.message));
+  });
+  document.getElementById('resetView').addEventListener('click', ()=> { map.setView([DEFAULT.lat, DEFAULT.lon], 6); fetchAll(DEFAULT.lat, DEFAULT.lon, DEFAULT.label); });
+
+  // initial load (default)
+  await fetchAll(DEFAULT.lat, DEFAULT.lon, DEFAULT.label);
+});
+</script>
+
+</body>
+</html>
