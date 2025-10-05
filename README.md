@@ -57,7 +57,7 @@ CleanSky is an interactive web application that provides real-time air quality a
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd cleansky
+   cd CleanSky
    ```
 
 2. **Install dependencies**
