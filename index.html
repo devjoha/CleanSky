@@ -167,7 +167,7 @@
 
 <script>
 /* ========= CONFIG ========= */
-const API_BASE = "http://127.0.0.1:8000"; // backend base (change if needed)
+const API_BASE = ""; // backend base (empty string means same origin)
 const DEFAULT = { lat: 41.3111, lon: 69.2797, label: "Tashkent, Uzbekistan" }; // default when no geolocation allowed
 /* ========================== */
 
@@ -259,9 +259,8 @@ function addStationMarkers(locations){
     if(!coords || !coords.latitude || !coords.longitude) return;
     // color by pm25 value if present
     let pm25 = null;
-    if(loc.measurements && loc.measurements.length){
-      const mm = loc.measurements.find(x => x.parameter === 'pm25') || loc.measurements[0];
-      pm25 = mm ? mm.value : null;
+    if(loc.measurements && typeof loc.measurements === 'object'){
+      pm25 = loc.measurements.pm25 || null;
     }
     let color = '#10b981'; // green
     if(pm25 !== null){
@@ -278,8 +277,9 @@ function addStationMarkers(locations){
       icon: L.divIcon({ className: '', html: el.outerHTML, iconSize: [22,22], iconAnchor:[11,11] })
     }).addTo(map);
 
-    const measHtml = (loc.measurements||[]).map(m => `<b>${m.parameter.toUpperCase()}</b>: ${m.value} ${m.unit||''}`).join('<br>');
-    marker.bindPopup(`<b>${loc.location}</b><br>${measHtml}`);
+    const measObj = loc.measurements || {};
+    const measHtml = Object.entries(measObj).map(([param, value]) => `<b>${param.toUpperCase()}</b>: ${value}`).join('<br>');
+    marker.bindPopup(`<b>${loc.location}</b><br>${measHtml || 'No data'}`);
     stationMarkers.push(marker);
   });
   // fit map to markers if any
