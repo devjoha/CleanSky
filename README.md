@@ -134,15 +134,50 @@ CleanSky/
 * AQI widget updates with color-coded status and health recommendations
 
 ---
+---
 
 ## Troubleshooting
 
-* **`ModuleNotFoundError: No module named 'fastapi'`** → You forgot to activate the virtual environment. Run:
+* **`ModuleNotFoundError: No module named 'fastapi'`**
+  → You forgot to activate the virtual environment. Run:
 
   ```bash
-  source .venv/bin/activate
+  source .venv/bin/activate   # Linux / macOS
+  .venv\Scripts\activate      # Windows
   ```
-* **Blank page** → Make sure you’re visiting `http://localhost:8000` not `5000`.
+
+* **`pip` or `uv` not recognized**
+
+  * Make sure Python is installed and added to your PATH.
+  * On Linux/macOS you can try:
+
+    ```bash
+    python3 -m pip install -r requirements.txt
+    ```
+  * On Windows you can try:
+
+    ```powershell
+    py -m pip install -r requirements.txt
+    ```
+  * For uv installation, follow: [https://github.com/astral-sh/uv](https://github.com/astral-sh/uv)
+
+* **Blank page**
+  → Make sure you’re visiting `http://localhost:8000` (not `5000`).
+
+* **Still doesn’t work?**
+  Try reinstalling dependencies:
+
+  ```bash
+  rm -rf .venv
+  uv sync
+  ```
+
+  or
+
+  ```bash
+  pip install --upgrade pip setuptools wheel
+  pip install -r requirements.txt
+  ```
 
 ---
 
